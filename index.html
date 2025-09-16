@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+	<link rel="manifest" href="manifest.json">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stemme til tekst (dansk)</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 900px; margin: 2rem auto; line-height: 1.5; }
+    button { margin: .25rem; padding: .5rem 1rem; font-size: 1rem; border-radius: 8px; cursor: pointer; }
+    #status { margin-left:.5rem; font-weight:600; }
+    .box { border:2px solid #aaa; border-radius:8px; padding:.75rem; min-height:120px; margin:1rem 0; background:#f9f9f9; }
+    .box.active { border-color:#007bff; background:#eef6ff; }
+    .box h3 { margin-top:0; }
+    .controls { margin:1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Stemme → Tekst (dansk)</h1>
+
+  <div class="controls">
+    <button id="startBtn">🎤 Start optagelse</button>
+    <button id="stopBtn">🛑 Stop</button>
+    <button id="clearBtn">✖ Ryd valgt boks</button>
+    <button id="downloadBtn">⬇ Hent valgt boks</button>
+    <span id="status">Ikke startet</span>
+  </div>
+
+  <p><strong>Vælg en boks og tal – din tekst går derhen:</strong></p>
+
+  <div id="boxes">
+    <div class="box" data-id="1"><h3>Boks 1</h3><div class="content"></div></div>
+    <div class="box" data-id="2"><h3>Boks 2</h3><div class="content"></div></div>
+    <div class="box" data-id="3"><h3>Boks 3</h3><div class="content"></div></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const status = document.getElementById('status');
+    const boxes = document.querySelectorAll('.box');
+
+    let activeBox = null;
+    let transcripts = {}; // store transcripts per box
+
+    // --- Click to select a box ---
+    boxes.forEach(box => {
+      box.addEventListener('click', () => {
+        boxes.forEach(b => b.classList.remove('active'));
+        box.classList.add('active');
+        activeBox = box.dataset.id;
+        if (!transcripts[activeBox]) transcripts[activeBox] = "";
+        status.textContent = `Valgt boks ${activeBox}`;
+      });
+    });
+
+    // Speech recognition setup
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      status.textContent = 'Din browser understøtter ikke Web Speech API. Brug Chrome eller Edge.';
+      startBtn.disabled = true;
+      stopBtn.disabled = true;
+      clearBtn.disabled = true;
+      downloadBtn.disabled = true;
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'da-DK';
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      let manuallyStopped = false;
+
+      recognition.onstart = () => {
+        status.textContent = activeBox ? `Lytter (boks ${activeBox})…` : "Lytter (vælg en boks)";
+      };
+
+      recognition.onresult = (event) => {
+        if (!activeBox) {
+          status.textContent = "⚠ Vælg en boks først!";
+          return;
+        }
+
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          const text = res[0].transcript;
+          if (res.isFinal) {
+            transcripts[activeBox] += text + " ";
+          } else {
+            interim += text;
+          }
+        }
+        const boxEl = document.querySelector(`.box[data-id="${activeBox}"] .content`);
+        boxEl.textContent = transcripts[activeBox] + (interim ? "\n[" + interim + "]" : "");
+      };
+
+      recognition.onerror = (e) => {
+        status.textContent = 'Fejl: ' + (e.error || 'ukendt fejl');
+      };
+
+      recognition.onend = () => {
+        if (manuallyStopped) {
+          status.textContent = 'Stoppet';
+        } else {
+          status.textContent = 'Optagelse sluttet';
+        }
+      };
+
+      startBtn.onclick = () => {
+        manuallyStopped = false;
+        try { recognition.start(); } catch {}
+      };
+      stopBtn.onclick = () => { manuallyStopped = true; recognition.stop(); };
+
+      clearBtn.onclick = () => {
+        if (!activeBox) { status.textContent = "⚠ Vælg en boks først!"; return; }
+        transcripts[activeBox] = "";
+        document.querySelector(`.box[data-id="${activeBox}"] .content`).textContent = "";
+        status.textContent = `Boks ${activeBox} ryddet`;
+      };
+
+      downloadBtn.onclick = () => {
+        if (!activeBox) { status.textContent = "⚠ Vælg en boks først!"; return; }
+        const text = transcripts[activeBox] || "";
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `transkript_boks${activeBox}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+    }
+  </script>
+</body>
+</html>
