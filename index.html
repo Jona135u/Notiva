@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notiva (Mobile)</title>
+<style>
+  :root{
+    --bg:#fffaf9; --sidebar:#bc6256; --sidebar-2:#c97366; --accent:#a94f44;
+    --card:#ffffff; --text:#2b2b2b; --muted:#6b6b6b;
+    --shadow:0 6px 18px rgba(0,0,0,.08); --radius:14px;
+    --drawer-w:82vw; --strip-w:12px; --slide:.28s;
+  }
+  [data-theme="sea"]{ --bg:#f7fbff; --sidebar:#1f6f8b; --sidebar-2:#2e8fb3; --accent:#14586e; --card:#fff; --text:#1f2a32; --muted:#62727d; }
+  [data-theme="clean"]{ --bg:#fbfbfc; --sidebar:#b9bdc4; --sidebar-2:#c7cbd2; --accent:#636a75; --card:#fff; --text:#222; --muted:#59626f; }
+
+  *{box-sizing:border-box} html,body{height:100%}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+    color:var(--text); background:var(--bg);
+    min-height:100dvh; overflow:hidden;
+  }
+
+  /* Thin strip always visible when collapsed */
+  .strip{
+    position:fixed; left:0; top:0; bottom:0; width:var(--strip-w);
+    background:linear-gradient(180deg,var(--sidebar),var(--sidebar-2));
+    box-shadow:2px 0 10px rgba(0,0,0,.08); cursor:pointer; z-index:60;
+  }
+  .strip::after{ content:""; position:absolute; top:50%; left:2px; transform:translateY(-50%); width:8px; height:40px; border-radius:6px; background:rgba(255,255,255,.55) }
+
+  /* Drawer */
+  aside{
+    position:fixed; left:0; top:0; bottom:0; width:var(--drawer-w);
+    background:linear-gradient(180deg,var(--sidebar) 0,var(--sidebar-2) 100%);
+    display:flex; flex-direction:column; z-index:80;
+    transform:translateX(-100%); transition:transform var(--slide) ease;
+  }
+  body.menu-open aside{ transform:translateX(0) }
+  .scroll-area{ flex:1; overflow:auto; padding:18px 18px 140px 18px }
+
+  .logo{ display:flex; justify-content:center; align-items:center; height:64px; margin-bottom:10px; cursor:pointer }
+  .logo-box{ background:#fff; color:#000; border-radius:12px; padding:8px 16px; font-weight:900; font-size:20px; letter-spacing:2px; line-height:1; box-shadow:var(--shadow) }
+
+  nav{ margin-top:4px }
+  .menu-title{ color:#fff; font-weight:700; margin:0 6px 10px 6px }
+  .nav-btn{ width:100%; text-align:left; padding:12px 14px; border:none; border-radius:10px; background:rgba(255,255,255,.25); color:#fff; font-size:16px; cursor:pointer; margin:9px 0; backdrop-filter:blur(4px) }
+  .nav-btn.active{ background:rgba(255,255,255,.45); font-weight:700 }
+
+  .palette-wrap{ position:absolute; left:18px; right:18px; bottom:84px; display:flex; flex-direction:column; align-items:center; gap:10px }
+  .theme-toggle{ border:none; border-radius:999px; padding:8px 12px; font-weight:700; cursor:pointer; background:#fff; color:var(--accent); box-shadow:var(--shadow) }
+  .palettes{ display:none } .palettes.show{ display:block }
+  .swatches{ display:flex; gap:10px; justify-content:center }
+  .swatch{ height:28px; width:28px; border-radius:50%; border:2px solid rgba(255,255,255,.9); cursor:pointer; box-shadow:var(--shadow) }
+  .swatch[data-set="default"]{ background:linear-gradient(135deg,#bc6256,#c97366) }
+  .swatch[data-set="sea"]{ background:linear-gradient(135deg,#1f6f8b,#2e8fb3) }
+  .swatch[data-set="clean"]{ background:linear-gradient(135deg,#aeb4bd,#d0d5dc) }
+
+  .edit-area{ position:absolute; left:18px; right:18px; bottom:18px; display:flex; gap:10px }
+  .edit-btn,.add-tpl{ flex:1; padding:10px 12px; border:none; border-radius:10px; cursor:pointer; background:#fff; color:var(--accent); font-weight:700 }
+
+  main{ padding:22px 16px 100px; overflow:auto; height:100vh }
+  h1{ margin:0 0 10px; font-size:32px; color:var(--accent) }
+  .helper{ color:var(--muted); margin:0 0 14px }
+  .home-editor{ background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; min-height:160px; outline:none; border:1px solid #ececec }
+
+  .tpl-header{ display:flex; align-items:center; gap:12px; margin:8px 0 12px }
+  .tpl-header input{ font-size:20px; font-weight:700; border:none; background:transparent; color:var(--accent); outline:none }
+
+  .boxes{ column-width:250px; column-gap:12px }
+  .box{ display:inline-block; width:100%; background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:12px; border:2px solid transparent; break-inside:avoid; margin:0 0 12px }
+  .box.selected{ border-color:var(--accent) }
+  .box-title{ width:100%; border:none; border-bottom:1px dashed #ddd; padding:6px 4px; outline:none; font-weight:700; background:transparent }
+  .box textarea{ width:100%; min-height:100px; border:none; outline:none; resize:none; padding:8px 4px; background:transparent; overflow:hidden; line-height:1.4 }
+  .box-actions{ display:flex; gap:8px; margin-top:8px }
+  .small-btn{ border:none; border-radius:8px; padding:8px 10px; background:#f3f4f6; color:#333 }
+
+  .add-box{ margin-top:4px; border:none; border-radius:10px; padding:10px 12px; background:var(--accent); color:#fff; box-shadow:var(--shadow) }
+
+  .mic{ position:fixed; left:50%; transform:translateX(-50%); bottom:16px; z-index:30; height:56px; width:56px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; box-shadow:0 10px 30px rgba(0,0,0,.25); border:none; cursor:pointer }
+
+  /* Edit overlay */
+  .edit-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; flex-direction:column; z-index:90 }
+  .edit-overlay.show{ display:flex; animation:fadeIn .2s ease }
+  @keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+  .overlay-title{ color:#fff; font-weight:800; margin:0 0 12px }
+  .overlay-grid{ width:min(680px,92vw); display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:12px }
+  .overlay-card{ background:#fff; border-radius:12px; box-shadow:var(--shadow); padding:12px; text-align:center; display:flex; flex-direction:column; gap:8px }
+  .overlay-card input{ border:1px solid #e6e6e6; border-radius:8px; padding:8px 10px; font-weight:700 }
+  .overlay-card button{ border:none; border-radius:10px; padding:8px 10px; cursor:pointer; background:#ffe9e7; color:#aa2a1e; font-weight:700 }
+  .overlay-close{ border:none; border-radius:12px; padding:10px 16px; font-weight:800; cursor:pointer; background:#fff; color:var(--accent); box-shadow:var(--shadow) }
+</style>
+</head>
+<body class="menu-collapsed">
+  <div class="strip" id="strip" title="Åbn menu"></div>
+
+  <aside id="drawer">
+    <div class="scroll-area">
+      <div class="logo" id="homeLink"><div class="logo-box">NOTIVA</div></div>
+      <nav id="nav"><div class="menu-title">Menu</div></nav>
+    </div>
+
+    <div class="palette-wrap">
+      <button class="theme-toggle" id="themeToggle">Tema</button>
+      <div class="palettes" id="palettes">
+        <div class="swatches">
+          <div class="swatch" data-set="default"></div>
+          <div class="swatch" data-set="sea"></div>
+          <div class="swatch" data-set="clean"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="edit-area">
+      <button class="add-tpl" id="addTplBtn">Tilføj skabelon</button>
+      <button class="edit-btn" id="toggleEdit">Rediger</button>
+    </div>
+  </aside>
+
+  <main>
+    <section id="home">
+      <h1>Info og Deadlines</h1>
+      <p class="helper">Her kan du samle vigtige datoer og information.</p>
+      <div id="homeEditor" class="home-editor" contenteditable="true"></div>
+    </section>
+
+    <section id="tplView" style="display:none">
+      <div class="tpl-header"><input id="tplTitle" /></div>
+      <div class="boxes" id="boxes"></div>
+      <button class="add-box" id="addBox">Tilføj boks</button>
+    </section>
+  </main>
+
+  <button class="mic" id="micBtn" title="Tal til den valgte boks" aria-label="Start/Stop tale-til-tekst">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 1a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10a7 7 0 0 1-14 0"/>
+      <path d="M12 17v6"/>
+    </svg>
+  </button>
+
+  <div class="edit-overlay" id="editOverlay">
+    <h2 class="overlay-title">Skabeloner</h2>
+    <div class="overlay-grid" id="overlayGrid"></div>
+    <button class="overlay-close" id="overlayDone">Færdig</button>
+  </div>
+
+<script>
+const STORAGE_KEY="notiva_mobile_v1";
+const DEFAULT_TEMPLATES=["Kost","Medicin","Kognitiv","Mobilitet","Noter"];
+let state=load()||{theme:"default",templates:[...DEFAULT_TEMPLATES],homeContent:"",pages:{}};
+let current="home",selectedId=null;
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}
+function load(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))}catch{return null}}
+function uid(){return Math.random().toString(36).slice(2,9)}
+
+const nav=document.getElementById("nav");
+const home=document.getElementById("home");
+const tpl=document.getElementById("tplView");
+const homeEd=document.getElementById("homeEditor");
+const tplTitle=document.getElementById("tplTitle");
+const boxes=document.getElementById("boxes");
+const palettes=document.getElementById("palettes");
+const overlay=document.getElementById("editOverlay");
+const overlayGrid=document.getElementById("overlayGrid");
+
+/* Init */
+applyTheme(state.theme);
+renderNav(); openHome();
+
+/* Drawer open/close */
+const strip=document.getElementById("strip");
+strip.onclick=()=>document.body.classList.add("menu-open");
+document.addEventListener("click",(e)=>{
+  const inAside=e.target.closest("aside"); const inStrip=e.target.closest(".strip");
+  const inOverlay=overlay.classList.contains("show");
+  if(inAside||inStrip||inOverlay) return;
+  document.body.classList.remove("menu-open");
+});
+
+/* Logo → home + keep menu open */
+document.getElementById("homeLink").onclick=()=>{openHome(); document.body.classList.add("menu-open");}
+
+/* Theme */
+document.getElementById("themeToggle").onclick=()=>palettes.classList.toggle("show");
+document.querySelectorAll(".swatch").forEach(s=>s.onclick=()=>{applyTheme(s.dataset.set); state.theme=s.dataset.set; save()});
+
+/* Overlay manage */
+document.getElementById("toggleEdit").onclick=openEditOverlay;
+document.getElementById("overlayDone").onclick=()=>overlay.classList.remove("show");
+
+/* Add template */
+document.getElementById("addTplBtn").onclick=()=>{
+  const name=prompt("Navn på skabelon:")||""; const n=name.trim();
+  if(!n) return; if(state.templates.includes(n)){alert("Findes allerede."); return;}
+  state.templates.push(n); ensurePage(n); save(); renderNav(); openTemplate(n);
+};
+document.getElementById("addBox").onclick=addBox;
+
+/* Nav */
+function renderNav(){
+  nav.querySelectorAll(".nav-btn").forEach(b=>b.remove());
+  const start=btn("Start",()=>{openHome(); document.body.classList.add("menu-open")}); if(current==="home")start.classList.add("active"); nav.append(start);
+  state.templates.forEach(n=>{const b=btn(n,()=>openTemplate(n)); if(current===n)b.classList.add("active"); nav.append(b);});
+}
+function btn(t,on){const b=document.createElement("button"); b.className="nav-btn"; b.textContent=t; b.onclick=(e)=>{e.stopPropagation(); on(); document.body.classList.remove("menu-open");}; return b}
+
+/* Views */
+function show(id){home.style.display=id==="home"?"block":"none"; tpl.style.display=id==="tpl"?"block":"none";}
+function openHome(){current="home"; show("home"); renderNav(); homeEd.innerHTML=state.homeContent||""; homeEd.oninput=()=>{state.homeContent=homeEd.innerHTML; save()}; document.getElementById("micBtn").style.display="none"}
+function ensurePage(n){if(!state.pages[n])state.pages[n]={title:n,boxes:[]}}
+function renameTemplate(oldN,newN){
+  if(oldN===newN) return;
+  if(state.templates.includes(newN)){ alert("Navnet bruges allerede."); return; }
+  const i=state.templates.indexOf(oldN); if(i>-1) state.templates[i]=newN;
+  if(state.pages[oldN]){state.pages[newN]=state.pages[oldN]; state.pages[newN].title=newN; delete state.pages[oldN];}
+  if(current===oldN) current=newN;
+  save(); renderNav();
+}
+function openTemplate(name){
+  ensurePage(name); current=name; show("tpl"); renderNav(); document.getElementById("micBtn").style.display="grid";
+  const page=state.pages[name];
+  tplTitle.value=page.title;
+  tplTitle.oninput=()=>{const nt=(tplTitle.value||"").trim()||name; page.title=nt; if(nt!==name){renameTemplate(name,nt); name=nt;} else{save(); renderNav();}};
+  boxes.innerHTML="";
+  if(page.boxes.length===0){page.boxes.push({id:uid(),title:"Ny boks",text:""}); save();}
+  page.boxes.forEach(b=>boxes.append(renderBox(page,b)));
+  // Close drawer to focus on content
+  document.body.classList.remove("menu-open");
+}
+function renderBox(page,b){
+  const el=document.createElement("div"); el.className="box"; el.dataset.id=b.id;
+  const t=document.createElement("input"); t.className="box-title"; t.value=b.title||"Uden navn"; t.placeholder="Navn på boks"; t.oninput=()=>{b.title=t.value; save()};
+  const ta=document.createElement("textarea"); ta.value=b.text||""; autoGrow(ta); ta.addEventListener("input",()=>{b.text=ta.value; autoGrow(ta); save()});
+  el.onclick=(e)=>{e.stopPropagation(); selectedId=b.id; document.querySelectorAll(".box").forEach(x=>x.classList.remove("selected")); el.classList.add("selected")};
+  const actions=document.createElement("div"); actions.className="box-actions";
+  const clear=small("Ryd",()=>{ta.value=""; b.text=""; autoGrow(ta); save()});
+  const rm=small("Fjern",()=>{page.boxes=page.boxes.filter(x=>x.id!==b.id); if(selectedId===b.id)selectedId=null; save(); openTemplate(current)});
+  actions.append(clear,rm);
+  el.append(t,ta,actions);
+  return el;
+}
+function small(txt,on){const b=document.createElement("button"); b.className="small-btn"; b.textContent=txt; b.onclick=(e)=>{e.stopPropagation(); on()}; return b}
+function addBox(){ if(current==="home")return; const p=state.pages[current]; p.boxes.push({id:uid(),title:"Ny boks",text:""}); save(); openTemplate(current); }
+function autoGrow(el){ el.style.height="auto"; el.style.height=el.scrollHeight+"px"; }
+
+/* Overlay */
+function openEditOverlay(){
+  overlayGrid.innerHTML="";
+  state.templates.forEach(n=>{
+    const card=document.createElement("div"); card.className="overlay-card";
+    const inp=document.createElement("input"); inp.value=n;
+    inp.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault(); inp.blur();}});
+    inp.addEventListener("blur",()=>{const v=inp.value.trim(); if(!v||v===n) return; if(state.templates.includes(v)){alert("Navnet bruges allerede."); inp.value=n; return;} renameTemplate(n,v); openEditOverlay();});
+    const del=document.createElement("button"); del.textContent="Slet"; del.onclick=()=>{state.templates=state.templates.filter(t=>t!==n); delete state.pages[n]; if(current===n){openHome()} save(); renderNav(); openEditOverlay();};
+    card.append(inp,del); overlayGrid.append(card);
+  });
+  overlay.classList.add("show");
+}
+
+/* Theme */
+function applyTheme(t){ document.documentElement.removeAttribute("data-theme"); if(t==="sea")document.documentElement.setAttribute("data-theme","sea"); if(t==="clean")document.documentElement.setAttribute("data-theme","clean"); }
+
+/* Speech */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const micBtn=document.getElementById("micBtn"); let rec=null,list=false;
+if(SR){ rec=new SR(); rec.lang="da-DK"; rec.onresult=(e)=>{const text=Array.from(e.results).map(r=>r[0].transcript).join(" "); if(!selectedId||current==="home")return; const p=state.pages[current]; const b=p.boxes.find(x=>x.id===selectedId); if(!b)return; b.text=(b.text?b.text+" ":"")+text; save(); const ta=document.querySelector(`.box[data-id="${selectedId}"] textarea`); if(ta){ ta.value=b.text; autoGrow(ta);} }; rec.onstart=()=>micBtn.classList.add("recording"); rec.onend=()=>{micBtn.classList.remove("recording"); list=false}; rec.onerror=()=>{micBtn.classList.remove("recording"); list=false};
+  micBtn.onclick=(e)=>{e.stopPropagation(); if(current==="home"){alert("Vælg en boks først.");return;} if(!selectedId){alert("Tryk på en boks først.");return;} if(!list){try{rec.start(); list=true;}catch{}} else{try{rec.stop(); list=false;}catch{}}};
+}else{ micBtn.disabled=true; micBtn.title="Tale-til-tekst understøttes ikke i denne browser."; }
+</script>
+</body>
+</html>
