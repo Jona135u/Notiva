@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notiva – Mobile</title>
+<style>
+  :root{
+    --bg:#fffaf9; --sidebar:#bc6256; --sidebar-2:#c97366; --accent:#a94f44;
+    --card:#ffffff; --text:#2b2b2b; --muted:#6b6b6b; --shadow:0 6px 18px rgba(0,0,0,.08); --radius:14px;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100dvh }
+
+  header{ display:flex; justify-content:center; align-items:center; padding:12px }
+  .logo-box{ background:#fff; color:#000; border-radius:12px; padding:8px 16px; font-weight:900; font-size:18px; letter-spacing:2px; line-height:1; box-shadow:var(--shadow) }
+
+  main{ padding:16px; padding-bottom:110px }
+  h2{ margin:8px 0 12px; color:var(--accent) }
+
+  .tpl{ margin-bottom:14px }
+  .tpl-title{ font-weight:800; margin-bottom:8px }
+  .boxes{ display:grid; grid-template-columns:1fr; gap:10px }
+  .box{ background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); padding:12px }
+  .box input{ width:100%; border:none; border-bottom:1px dashed #ddd; padding:6px 4px; font-weight:700; outline:none }
+  .box textarea{ width:100%; min-height:100px; border:none; outline:none; resize:none; padding:8px 4px; line-height:1.4 }
+
+  .dock{
+    position:fixed; left:0; right:0; bottom:0; display:flex; gap:10px; justify-content:center;
+    padding:12px 16px; background:rgba(255,255,255,.8); backdrop-filter:blur(8px);
+    border-top:1px solid #e9e9e9;
+  }
+  .btn{
+    height:56px; min-width:56px; border-radius:999px; border:none; cursor:pointer; display:grid; place-items:center; box-shadow:var(--shadow)
+  }
+  .btn-primary{ background:var(--accent); color:#fff; padding:0 18px; border-radius:16px }
+  .btn-ghost{ background:#fff; color:var(--accent); }
+
+  /* Send overlay */
+  .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); z-index:40 }
+  .overlay.show{ display:flex; }
+  .overlay-inner{
+    width:min(860px,94vw); max-height:86vh; background:#fff; border-radius:16px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; padding:14px;
+  }
+  .overlay-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px }
+  .overlay-grid{ overflow:auto; padding:6px; display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px }
+  .card{
+    border:1.5px solid #ececec; border-radius:12px; padding:10px; cursor:pointer; position:relative;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .card .meta{ font-size:12px; color:#666 }
+  .card .title{ font-weight:800; }
+  .card .check{ position:absolute; top:8px; right:8px; width:20px; height:20px; border-radius:50%; border:2px solid var(--accent); background:#fff }
+  .card.selected{ border-color:var(--accent) }
+  .card.selected .check{ background:var(--accent) }
+
+  .overlay-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px }
+  .overlay-foot .count{ color:#555 }
+  .overlay-foot .left{ display:flex; gap:8px; }
+  .small{ border:none; border-radius:10px; padding:8px 10px; background:#f2f2f2; cursor:pointer }
+
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:80px;
+    background:#111; color:#fff; padding:10px 12px; border-radius:12px; box-shadow:var(--shadow);
+    opacity:0; transition:.22s ease;
+  }
+  .toast.show{ opacity:1 }
+</style>
+</head>
+<body>
+  <header><div class="logo-box">NOTIVA</div></header>
+
+  <main id="content"></main>
+
+  <div class="dock">
+    <button class="btn btn-ghost" id="pairBtn" title="Opsætning">Parring</button>
+    <button class="btn btn-primary" id="sendBtn">Send</button>
+    <button class="btn" id="micBtn" style="background:var(--accent);color:#fff" title="Tale-til-tekst">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 1a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10a7 7 0 0 1-14 0"/>
+        <path d="M12 17v6"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Send overlay -->
+  <div class="overlay" id="sendOverlay">
+    <div class="overlay-inner">
+      <div class="overlay-head">
+        <h3 style="margin:0">Send kasser</h3>
+        <button class="small" id="closeOverlay">Luk</button>
+      </div>
+      <div class="overlay-grid" id="overlayGrid"></div>
+      <div class="overlay-foot">
+        <div class="left">
+          <button class="small" id="sendAll">Send alle</button>
+          <button class="small" id="toggleSelectAll">Markér alle</button>
+        </div>
+        <div class="count" id="selCount">0 valgt</div>
+        <button class="btn btn-primary" id="confirmSend">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+/** ===== State & storage ===== */
+const STORAGE="notiva_mobile_state_v1";
+const PAIR_KEY="notiva_pair_token";
+const ENDPOINT_KEY="notiva_ws_endpoint";
+
+let state = load() || {
+  templates: {
+    "Kost": [{ id:uid(), title:"Morgenmad", text:"" }],
+    "Medicin": [{ id:uid(), title:"Aftenpille", text:"" }],
+    "Kognitiv": [],
+    "Mobilitet": [],
+    "Noter": []
+  },
+  order: ["Kost","Medicin","Kognitiv","Mobilitet","Noter"]
+};
+function load(){ try{return JSON.parse(localStorage.getItem(STORAGE))}catch{return null} }
+function save(){ localStorage.setItem(STORAGE, JSON.stringify(state)); }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+
+let token = localStorage.getItem(PAIR_KEY) || "";
+let wsEndpoint = localStorage.getItem(ENDPOINT_KEY) || ""; // e.g. ws://192.168.1.10:8787/ws
+let ws=null;
+
+function connectWS(){
+  if(!token || !wsEndpoint){ return; }
+  try{
+    ws = new WebSocket(wsEndpoint);
+    ws.onopen = ()=> ws.send(JSON.stringify({ type:"auth", token, role:"mobile" }));
+    ws.onmessage = (e)=>{
+      const msg = JSON.parse(e.data);
+      if(msg.type==="auth.ok") toast("Forbundet til PC ✓");
+      if(msg.type==="transfer.ack") toast(`Sendt (${msg.count}) ✓`);
+    };
+    ws.onclose = ()=> setTimeout(connectWS, 1200);
+  }catch{}
+}
+
+/** ===== Render content (simple grouped list) ===== */
+function render(){
+  const root=document.getElementById("content");
+  root.innerHTML="";
+  state.order.forEach(tpl=>{
+    const group=document.createElement("section");
+    group.className="tpl";
+    group.innerHTML = `<div class="tpl-title">${tpl}</div>`;
+    const wrap=document.createElement("div"); wrap.className="boxes";
+    (state.templates[tpl]||[]).forEach(b=>{
+      const card=document.createElement("div"); card.className="box";
+      const title=document.createElement("input"); title.value=b.title||"Uden navn";
+      title.oninput=()=>{b.title=title.value; save();};
+      const ta=document.createElement("textarea"); ta.value=b.text||"";
+      ta.addEventListener("input", ()=>{ b.text=ta.value; autoGrow(ta); save();});
+      autoGrow(ta);
+      card.append(title, ta);
+      wrap.append(card);
+    });
+    group.append(wrap);
+    root.append(group);
+  });
+}
+function autoGrow(el){ el.style.height="auto"; el.style.height=el.scrollHeight + "px"; }
+
+/** ===== Send overlay ===== */
+const sendOverlay=document.getElementById("sendOverlay");
+const overlayGrid=document.getElementById("overlayGrid");
+const selCount=document.getElementById("selCount");
+let selected = new Set();
+
+function openSendOverlay(){
+  selected.clear();
+  overlayGrid.innerHTML="";
+  // Flatten all boxes across templates
+  const all = [];
+  state.order.forEach(tpl=>{
+    (state.templates[tpl]||[]).forEach(b=>{
+      all.push({ tpl, ...b });
+    });
+  });
+  // Sort by "recently edited" (we’ll track simple lastModified with new text entry)
+  // For demo, just keep order as-is
+  all.forEach(item=>{
+    const card = document.createElement("div");
+    card.className="card";
+    card.dataset.id = item.id;
+    card.innerHTML = `
+      <div class="check"></div>
+      <div class="title">${escapeHtml(item.title||"Uden navn")}</div>
+      <div class="meta">${escapeHtml(item.tpl)}</div>
+      <div class="snippet" style="font-size:12px;color:#555">${escapeHtml((item.text||"").slice(0,80))}${(item.text||"").length>80?"…":""}</div>
+    `;
+    card.onclick = ()=> toggleSelect(card, item.id);
+    overlayGrid.append(card);
+  });
+  updateSelCount();
+  sendOverlay.classList.add("show");
+}
+function closeSendOverlay(){ sendOverlay.classList.remove("show"); }
+
+function toggleSelect(el, id){
+  if(selected.has(id)){ selected.delete(id); el.classList.remove("selected"); }
+  else { selected.add(id); el.classList.add("selected"); }
+  updateSelCount();
+}
+function markAll(){
+  selected.clear();
+  overlayGrid.querySelectorAll(".card").forEach(c=>{ selected.add(c.dataset.id); c.classList.add("selected"); });
+  updateSelCount();
+}
+function updateSelCount(){ selCount.textContent = `${selected.size} valgt`; }
+
+function buildPayloadOnlySelected(){
+  const boxes = [];
+  state.order.forEach(tpl=>{
+    (state.templates[tpl]||[]).forEach(b=>{
+      if(selected.has(b.id) && (b.text||"").trim().length>0){
+        boxes.push(mapBox(tpl,b));
+      }
+    });
+  });
+  return boxes;
+}
+function buildPayloadAllChanged(){
+  const boxes = [];
+  state.order.forEach(tpl=>{
+    (state.templates[tpl]||[]).forEach(b=>{
+      if((b.text||"").trim().length>0){
+        boxes.push(mapBox(tpl,b));
+      }
+    });
+  });
+  return boxes;
+}
+function mapBox(tpl,b){
+  return {
+    template: tpl,
+    boxId: b.id,
+    title: b.title || "Uden navn",
+    content: b.text || "",
+    modifiedAt: new Date().toISOString(),
+  };
+}
+
+function sendSelected() {
+  if(!ws || ws.readyState!==1){ toast("Ingen forbindelse til PC"); return; }
+  const payload = {
+    type: "boxes.transfer",
+    version: 1,
+    client: { id: "mobile", name: (navigator.userAgent||"Mobil") },
+    target: { id: "pc" },
+    timestamp: new Date().toISOString(),
+    boxes: buildPayloadOnlySelected()
+  };
+  if(!payload.boxes.length){ toast("Intet valgt / tomt indhold"); return; }
+  ws.send(JSON.stringify(payload));
+  closeSendOverlay();
+}
+function sendAll(){
+  if(!ws || ws.readyState!==1){ toast("Ingen forbindelse til PC"); return; }
+  const payload = {
+    type: "boxes.transfer",
+    version: 1,
+    client: { id: "mobile", name: (navigator.userAgent||"Mobil") },
+    target: { id: "pc" },
+    timestamp: new Date().toISOString(),
+    boxes: buildPayloadAllChanged()
+  };
+  if(!payload.boxes.length){ toast("Ingen kasser med indhold"); return; }
+  ws.send(JSON.stringify(payload));
+  closeSendOverlay();
+}
+
+/** ===== Pairing on mobile (one-time) =====
+  Options:
+  - Easiest: open this page via http://<PC-IP>:8787/mobile.html and press "Parring"
+  - Enter the 6-digit code shown on PC → server returns token
+*/
+async function doPair(){
+  // Ask for PC host (only first time or if changed)
+  if(!wsEndpoint){
+    const host = prompt("Indtast PC'ens IP (fx 192.168.1.10:8787):", location.host) || "";
+    if(!host) return;
+    wsEndpoint = `ws://${host.replace(/^ws:\/\//,"")}/ws`;
+    localStorage.setItem(ENDPOINT_KEY, wsEndpoint);
+  }
+  const code = prompt("Indtast parringskoden fra PC'en:") || "";
+  if(!code) return;
+
+  // Redeem against PC HTTP server
+  const base = wsEndpoint.replace("ws://","http://").replace("/ws","");
+  const res = await fetch(`${base}/pair/redeem?code=${encodeURIComponent(code)}`).then(r=>r.json()).catch(()=>null);
+  if(!res || !res.ok){ toast("Ugyldig kode"); return; }
+  token = res.token; localStorage.setItem(PAIR_KEY, token);
+  toast("Parret ✓");
+  connectWS();
+}
+
+/** ===== Microphone (optional, basic) ===== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec=null, listening=false, activeBoxRef=null;
+function setupMic(){
+  const btn=document.getElementById("micBtn");
+  if(!SR){ btn.disabled=true; btn.title="Tale-til-tekst understøttes ikke"; return; }
+  rec = new SR(); rec.lang="da-DK"; rec.interimResults=false; rec.continuous=false;
+  rec.onresult=(e)=>{
+    const text = Array.from(e.results).map(r=>r[0].transcript).join(" ");
+    // Append to first box of first template as a quick demo:
+    const tpl = state.order[0];
+    if(tpl && state.templates[tpl] && state.templates[tpl][0]){
+      const b = state.templates[tpl][0];
+      b.text = (b.text? (b.text+" ") : "") + text;
+      save(); render(); toast("Tilføjede tale til første boks");
+    }
+  };
+  rec.onstart=()=>btn.style.opacity="0.85";
+  rec.onend=()=>{btn.style.opacity="1"; listening=false};
+  rec.onerror=()=>{btn.style.opacity="1"; listening=false};
+  btn.onclick=()=>{
+    if(!listening){ try{ rec.start(); listening=true; }catch{} }
+    else { try{ rec.stop(); listening=false; }catch{} }
+  };
+}
+
+/** ===== Utils ===== */
+function toast(t){ const el=document.getElementById("toast"); el.textContent=t; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"), 1800); }
+function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[m])); }
+
+/** ===== Events ===== */
+document.getElementById("sendBtn").onclick = ()=> openSendOverlay();
+document.getElementById("closeOverlay").onclick = ()=> closeSendOverlay();
+document.getElementById("confirmSend").onclick = ()=> sendSelected();
+document.getElementById("sendAll").onclick = ()=> sendAll();
+document.getElementById("toggleSelectAll").onclick = ()=> markAll();
+document.getElementById("pairBtn").onclick = ()=> doPair();
+
+/** ===== Start ===== */
+render(); setupMic();
+connectWS(); // will connect if token+endpoint exist
+</script>
+</body>
+</html>
